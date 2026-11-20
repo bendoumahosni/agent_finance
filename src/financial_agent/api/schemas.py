@@ -1,0 +1,53 @@
+"""Modèles de requête et de réponse de l'API.
+
+Valider au bord du système permet de ne plus se méfier à l'intérieur : une
+donnée mal formée est rejetée avec un 422 avant d'atteindre la logique.
+"""
+
+import uuid
+from datetime import datetime
+
+from pydantic import BaseModel, Field
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(..., min_length=1, max_length=5000)
+    # Le type UUID fait valider le format par Pydantic : une valeur arbitraire
+    # ne peut pas se retrouver dans le thread_id.
+    conversation_id: uuid.UUID | None = Field(
+        None,
+        description="Omettre pour démarrer une nouvelle conversation.",
+    )
+
+
+
+
+class ConversationOut(BaseModel):
+    id: uuid.UUID
+    title: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class HealthResponse(BaseModel):
+    status: str
+
+class MessageOut(BaseModel):
+    """Un message de l'historique, aplati pour le client.
+
+    `role` suit la nomenclature LangChain : human, ai, tool, system.
+    `tool_calls` permet au client d'afficher « a utilisé la calculatrice ».
+    """
+
+    role: str
+    content: str
+    tool_calls: list[str] | None = Field(
+        None, description="Noms des outils appelés par ce message."
+    )
+
+class ChatResponse(BaseModel):
+    conversation_id: uuid.UUID
+    response: str
+    # Capacités momentanément indisponibles (serveur MCP injoignable).
+    # Valeur par défaut vide : les clients existants ne cassent pas.
+    warnings: list[str] = Field(default_factory=list)

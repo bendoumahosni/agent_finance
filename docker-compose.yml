@@ -1,0 +1,69 @@
+# Pile de développement : API + Postgres + Keycloak.
+# Lancer depuis ce dossier :  docker compose up -d --build
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # L'API attend que Postgres accepte les connexions (depends_on).
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    ports:
+      # Limité à 127.0.0.1 : la base n'est pas exposée sur le réseau.
+      - "127.0.0.1:5432:5432"
+
+  keycloak:
+    # start-dev : HTTP et base embarquée. Développement uniquement.
+    image: quay.io/keycloak/keycloak:26.0
+    command: start-dev
+    environment:
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KEYCLOAK_ADMIN:-admin}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
+    ports:
+      - "8080:8080"
+    volumes:
+      # Conserve le realm entre les redémarrages.
+      - keycloak_data:/opt/keycloak/data
+
+  api:
+    build: .
+    env_file: .env
+    environment:
+      # "db" est le nom du service : l'API est dans un autre conteneur,
+      # "localhost" désignerait le conteneur de l'API lui-même.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      # OIDC_ISSUER doit être identique au claim "iss" du jeton, obtenu
+      # depuis votre PC, donc "localhost".
+      OIDC_ISSUER: http://localhost:8080/realms/${KEYCLOAK_REALM:-monrealm}
+      # Mais les clés publiques sont récupérées depuis le conteneur : "keycloak".
+      OIDC_JWKS_URL: http://keycloak:8080/realms/${KEYCLOAK_REALM:-monrealm}/protocol/openid-connect/certs
+      OIDC_AUDIENCE: ${OIDC_AUDIENCE:-financial-agent}
+
+    depends_on:
+      db:
+        condition: service_healthy
+      # Pas de condition sur currency-mcp : l'API doit pouvoir démarrer
+      # sans lui, c'est tout l'intérêt du démarrage dégradé.
+      currency-mcp:
+        condition: service_started
+    ports:
+      - "8000:8000"
+  currency-mcp:
+    # Serveur MCP autonome : ses dépendances, son cycle de vie, sa panne.
+    build: ./src/financial_agent/agent/mcp-servers/currency
+    environment:
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    # Pas de "ports:" : seule l'API le joint, par le réseau interne de Compose.
+    # L'exposer sur l'hôte ouvrirait un service sans authentification.
+
+volumes:
+  pgdata:
+  keycloak_data:

@@ -1,0 +1,41 @@
+# Environnements virtuels Python
+env/
+venv/
+.venv/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Variables d'environnement et secrets
+.env
+.env.*
+!.env.example
+
+# Configuration des IDE
+.vscode/
+.idea/
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Tests, couverture et outils
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Build
+dist/
+build/
+*.egg-info/
+
+# Fichiers temporaires
+*.tmp
+*.bak

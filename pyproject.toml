@@ -1,0 +1,60 @@
+# Déclaration du paquet, des dépendances et de la configuration des outils,
+# au même endroit. Remplace requirements.txt.
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "financial-agent"
+version = "0.1.0"
+description = "API de conversation avec un agent financier (LangChain / LangGraph)"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi",
+    "uvicorn[standard]",
+    "pydantic",
+    "pydantic-settings",
+    "httpx",
+    "langchain",
+    "langchain-openai",
+    "langchain-tavily",
+    "langchain-mcp-adapters",
+    "langgraph-checkpoint-postgres",
+    "psycopg[binary,pool]",
+    "pyjwt[crypto]",
+    "alembic",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "ruff",
+    "mypy",
+]
+
+# Indispensable avec la disposition src/ : indique où trouver le paquet.
+[tool.hatch.build.targets.wheel]
+packages = ["src/financial_agent"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Les tests unitaires n'ont besoin de rien ; les tests d'intégration
+# demandent une base. On peut cibler l'un ou l'autre par dossier.
+asyncio_mode = "auto"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+files = ["src"]
+ignore_missing_imports = true
+warn_unused_ignores = false

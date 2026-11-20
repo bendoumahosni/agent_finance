@@ -1,0 +1,15 @@
+services:
+  api:
+    environment:
+      # Place /app/src avant site-packages dans sys.path : c'est le code
+      # monté qui s'exécute, et --reload devient effectif.
+      PYTHONPATH: /app/src
+    command: >
+      uvicorn financial_agent.main:app
+      --host 0.0.0.0 --port 8000
+      --reload --reload-dir /app/src
+    volumes:
+      - ./src:/app/src
+      - ./migrations:/app/migrations
+      - ./tests:/app/tests
+      - ./alembic.ini:/app/alembic.ini

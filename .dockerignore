@@ -1,0 +1,20 @@
+# Ce qui n'a rien à faire dans l'image.
+env/
+venv/
+.venv/
+.env
+.env.*
+__pycache__/
+*.py[cod]
+.git/
+.gitignore
+.github/
+tests/
+scripts/
+*.md
+!README.md
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/

@@ -1,0 +1,6 @@
+
+# Versions figées : le SDK mcp est passé de 1.x à 2.x en renommant FastMCP
+# en MCPServer. Sans contrainte, un rebuild casse le serveur sans qu'un seul
+# fichier ait changé chez vous. Ce code vise la 2.x.
+mcp>=2.0,<3
+httpx>=0.27

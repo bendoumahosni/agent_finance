@@ -1,0 +1,16 @@
+# Conservé pour compatibilité. La source de vérité est pyproject.toml :
+#   pip install .            (exécution)
+#   pip install -e ".[dev]"  (développement)
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+httpx
+langchain-mcp-adapters
+langchain
+langchain-openai
+langchain-tavily
+langgraph-checkpoint-postgres
+psycopg[binary,pool]
+pyjwt[crypto]
+alembic
