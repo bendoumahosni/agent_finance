@@ -11,16 +11,18 @@ from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.store.postgres.aio import AsyncPostgresStore
 
 from financial_agent import __version__
 from financial_agent.agent.factory import build_agent
 from financial_agent.agent.mcp_tools import load_mcp_tools
-from financial_agent.api.routers import chat, conversations, health
+from financial_agent.api.routers import chat, conversations, health, memories
 from financial_agent.config import Settings, get_settings
 from financial_agent.db.pool import create_pool
 from financial_agent.logging_setup import setup_logging
-
+from financial_agent.observability.tracing import init_tracing, shutdown_tracing
 logger = logging.getLogger(__name__)
+
 
 async def reload_mcp_tools(
     app: FastAPI, settings: Settings, *, verbose: bool = False
@@ -42,7 +44,12 @@ async def reload_mcp_tools(
     app.state.mcp_failures = failures
     # Réaffectation : les requêtes en cours gardent l'ancien agent,
     # les suivantes prennent le nouveau.
-    app.state.agent = build_agent(app.state.checkpointer, settings, extra_tools=tools)
+    app.state.agent = build_agent(
+        app.state.checkpointer,
+        settings,
+        extra_tools=tools,
+        store=app.state.store,
+    )
 
     logger.info(
         "Outils MCP rechargés : %d outil(s), %d serveur(s) en échec",
@@ -50,6 +57,7 @@ async def reload_mcp_tools(
         len(failures),
     )
     return True
+
 
 async def mcp_retry_loop(app: FastAPI, settings: Settings) -> None:
     """Retente périodiquement les serveurs MCP injoignables.
@@ -66,6 +74,7 @@ async def mcp_retry_loop(app: FastAPI, settings: Settings) -> None:
         except Exception:
             logger.exception("Échec du rechargement des outils MCP")
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Ouvre les ressources au démarrage, les ferme à l'arrêt.
@@ -75,21 +84,30 @@ async def lifespan(app: FastAPI):
     """
     settings = get_settings()
     setup_logging(settings.log_level)
-
+    init_tracing(settings)
     # --- DÉMARRAGE ---
     async with create_pool(settings) as pool:
         checkpointer = AsyncPostgresSaver(pool)
         await checkpointer.setup()  # tables du checkpointer, sans effet si présentes
 
+        # Mémoire longue, sur le même pool : une table `store` est créée.
+        # Le checkpointer et le store sont deux couches distinctes, mais rien
+        # n'impose deux bases.
+        store = AsyncPostgresStore(pool)
+        await store.setup()
+
         app.state.pool = pool
         app.state.checkpointer = checkpointer
+        app.state.store = store
 
         # Démarrage dégradé : un serveur MCP injoignable n'empêche pas
         # l'application de servir, l'utilisateur en est averti dans /chat.
         mcp_tools, mcp_failures = await load_mcp_tools(settings)
         app.state.mcp_tools = mcp_tools
         app.state.mcp_failures = mcp_failures
-        app.state.agent = build_agent(checkpointer, settings, extra_tools=mcp_tools)
+        app.state.agent = build_agent(
+            checkpointer, settings, extra_tools=mcp_tools, store=store
+        )
 
         retry_task: asyncio.Task | None = None
         if settings.mcp_servers:
@@ -111,9 +129,13 @@ async def lifespan(app: FastAPI):
                 retry_task.cancel()
                 with suppress(asyncio.CancelledError):
                     await retry_task
-        # le "async with" ferme le pool
+            # le "async with" ferme le pool
+            # Vider la file de traces avant de fermer : sinon les dernières
+            # secondes d'activité sont perdues à chaque redéploiement.
+            shutdown_tracing()
 
     logger.info("Pool Postgres fermé.")
+
 
 def create_app(lifespan_handler=lifespan) -> FastAPI:
     app = FastAPI(
@@ -126,6 +148,7 @@ def create_app(lifespan_handler=lifespan) -> FastAPI:
     app.include_router(health.router)
     app.include_router(chat.router)
     app.include_router(conversations.router)
+    app.include_router(memories.router)
 
     return app
 

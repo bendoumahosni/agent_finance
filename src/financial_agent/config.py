@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     oidc_jwks_url: str | None = None
 
     # --- Réglages applicatifs (valeurs par défaut raisonnables) ---
-    model_name: str = "gpt-6-astra"
+    model_name: str = "gpt-6-luna"
     use_responses_api: bool | None = None
     search_max_results: int = 3
     agent_timeout_seconds: int = 60
@@ -47,7 +47,16 @@ class Settings(BaseSettings):
     # Vide par défaut : sans configuration, l'application se comporte comme avant.
     mcp_servers: dict[str, str] = {}
     mcp_retry_seconds: int = 60
-
+    # --- Observabilité (Langfuse) ---
+    # Sans clés, le traçage est simplement désactivé : l'application
+    # fonctionne à l'identique.
+    langfuse_public_key: str | None = None
+    langfuse_secret_key: str | None = None
+    langfuse_host: str = "https://cloud.langfuse.com"
+    langfuse_environment: str = "development"
+    langfuse_release: str | None = None
+    # 1.0 = toutes les requêtes tracées. À baisser en forte charge.
+    langfuse_sample_rate: float = 1.0
     # --- Guardrails ---
     # Plafonds par invocation : une injection réussie ou une simple boucle
     # du modèle ne doit pas pouvoir consommer le budget.

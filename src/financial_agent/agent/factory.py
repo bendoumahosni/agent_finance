@@ -22,7 +22,12 @@ from financial_agent.agent.prompts import SYSTEM_PROMPT
 from financial_agent.agent.tools.calcul import calcul_tool
 from financial_agent.agent.tools.search import build_search_tool
 from financial_agent.config import Settings
-
+from financial_agent.agent.memory import (
+    MemoryInjectionMiddleware,
+    forget_memory,
+    save_memory,
+)
+from langgraph.store.base import BaseStore
 
 def build_llm(settings: Settings) -> ChatOpenAI:
     kwargs: dict = {
@@ -65,12 +70,18 @@ def build_middleware(settings: Settings, llm: ChatOpenAI) -> list[Any]:
         #    croissent indéfiniment avec la longueur de la conversation.
         SummarizationMiddleware(
             model=llm,
-            trigger=("messages", settings.summarize_after_messages),
-            keep=("messages", settings.summarize_keep_messages),
+            # En fraction de la fenêtre réelle du modèle, et non en nombre de
+            # messages : avec une fenêtre d'un million de jetons, résumer au
+            # 40e message serait prématuré et coûteux.
+            trigger=("fraction", 0.8),
+            keep=("fraction", 0.3),
         ),
         # 4. Inspection des résultats d'outils : le contenu non validé
         #    (web, MCP) entre ici. Le plus utile des quatre.
         ToolResultGuardMiddleware(),
+        # 5. Mémoire longue : injecte le profil de l'utilisateur dans le
+        #    prompt système, en lecture seule.
+        MemoryInjectionMiddleware(),
     ]
 
 
@@ -78,17 +89,23 @@ def build_agent(
     checkpointer,
     settings: Settings,
     extra_tools: list[BaseTool] | None = None,
+    store: BaseStore | None = None,
 ):
     """Crée l'agent financier.
 
     `extra_tools` reçoit les outils découverts sur les serveurs MCP. Ils
     s'ajoutent aux outils locaux ; la valeur par défaut `None` garde le
     comportement d'origine quand aucun serveur n'est configuré.
+
+    `store` porte la mémoire longue. Sans lui, les outils de mémoire ne sont
+    pas exposés : inutile de proposer au modèle un outil qui échouerait.
     """
     # La conversion de devises n'est plus un outil local : elle est fournie
     # par le serveur MCP "currency". Si ce serveur est injoignable, la
     # capacité disparaît réellement, et /chat le signale dans `warnings`.
     tools: list[BaseTool] = [build_search_tool(settings), calcul_tool]
+    if store is not None:
+        tools += [save_memory, forget_memory]
     if extra_tools:
         tools.extend(extra_tools)
 
@@ -99,5 +116,6 @@ def build_agent(
         tools=tools,
         system_prompt=SYSTEM_PROMPT,
         checkpointer=checkpointer,
+        store=store,
         middleware=build_middleware(settings, llm),
     )

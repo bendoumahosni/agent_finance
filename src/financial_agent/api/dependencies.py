@@ -15,7 +15,11 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
 from financial_agent.config import Settings, get_settings
 from financial_agent.db.pool import DictPool
+from langgraph.store.base import BaseStore
 
+def get_store(request: Request) -> BaseStore:
+    """Store de la mémoire longue."""
+    return request.app.state.store
 
 def get_pool(request: Request) -> DictPool:
     return request.app.state.pool
@@ -36,6 +40,7 @@ AgentDep = Annotated[Any, Depends(get_agent)]
 CheckpointerDep = Annotated[AsyncPostgresSaver, Depends(get_checkpointer)]
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 McpFailuresDep = Annotated[dict[str, str], Depends(get_mcp_failures)]
+StoreDep = Annotated[BaseStore, Depends(get_store)]
 
 
 

@@ -3,8 +3,10 @@
 import asyncio
 import logging
 import uuid
+from collections.abc import AsyncIterator
 
 from fastapi import APIRouter, HTTPException, status
+from fastapi.responses import StreamingResponse
 from langchain.agents.middleware import PIIDetectionError
 
 from financial_agent.agent.guardrails import (
@@ -14,7 +16,7 @@ from financial_agent.agent.guardrails import (
     sanitize_user_input,
 )
 from financial_agent.agent.mcp_tools import warnings_for
-from financial_agent.agent.runner import run_financial_agent
+from financial_agent.agent.runner import run_financial_agent, stream_financial_agent
 from financial_agent.api.dependencies import (
     AgentDep,
     McpFailuresDep,
@@ -22,6 +24,7 @@ from financial_agent.api.dependencies import (
     SettingsDep,
 )
 from financial_agent.api.schemas import ChatRequest, ChatResponse
+from financial_agent.api.sse import SSE_HEADERS, format_event
 from financial_agent.auth.verify import CurrentPrincipal
 from financial_agent.db.repositories import conversations as repo
 
@@ -32,25 +35,20 @@ router = APIRouter(tags=["chat"])
 TITLE_MAX_LENGTH = 60
 
 
-@router.post("/chat", response_model=ChatResponse)
-async def chat(
+async def prepare_turn(
     body: ChatRequest,
-    principal: CurrentPrincipal,
+    user_id: str,
     pool: PoolDep,
-    agent: AgentDep,
-    settings: SettingsDep,
-    mcp_failures: McpFailuresDep,
-) -> ChatResponse:
-    """Envoie un message à l'agent.
+) -> tuple[uuid.UUID, str, list[str]]:
+    """Contrôles et persistance communs aux deux endpoints.
 
-    Sans `conversation_id`, une nouvelle conversation est créée et son
-    identifiant est renvoyé : c'est le serveur qui le génère, jamais le client.
+    Renvoie l'identifiant de conversation, le message rédigé et les
+    catégories retirées.
 
-    Ordre des opérations : vérifier, puis agir, puis enregistrer. Les contrôles
-    bon marché passent avant l'appel au modèle, qui est lent et payant.
+    Factorisé volontairement : dupliquer ces contrôles, c'est garantir qu'un
+    jour l'un des deux endpoints en oubliera un. Le streaming aurait été le
+    candidat idéal à l'oubli, puisqu'il est ajouté après coup.
     """
-    user_id = principal.subject
-
     # Guardrail d'entrée, AVANT toute écriture. LangGraph enregistre le
     # message dans le checkpoint dès l'entrée dans le graphe : un contrôle
     # fait par un middleware arriverait trop tard, le numéro serait déjà en
@@ -94,9 +92,32 @@ async def chat(
             )
         conversation_id = body.conversation_id
 
+    return conversation_id, message, redacted
+
+
+@router.post("/chat", response_model=ChatResponse)
+async def chat(
+    body: ChatRequest,
+    principal: CurrentPrincipal,
+    pool: PoolDep,
+    agent: AgentDep,
+    settings: SettingsDep,
+    mcp_failures: McpFailuresDep,
+) -> ChatResponse:
+    """Envoie un message à l'agent.
+
+    Sans `conversation_id`, une nouvelle conversation est créée et son
+    identifiant est renvoyé : c'est le serveur qui le génère, jamais le client.
+
+    Ordre des opérations : vérifier, puis agir, puis enregistrer. Les contrôles
+    bon marché passent avant l'appel au modèle, qui est lent et payant.
+    """
+    user_id = principal.subject
+    conversation_id, message, redacted = await prepare_turn(body, user_id, pool)
+
     try:
         reply = await asyncio.wait_for(
-            run_financial_agent(agent, message, str(conversation_id)),
+            run_financial_agent(agent, message, str(conversation_id), user_id),
             timeout=settings.agent_timeout_seconds,
         )
     except PIIDetectionError as exc:
@@ -142,4 +163,83 @@ async def chat(
             *redaction_warnings(redacted),
             *reply.warnings,
         ],
+    )
+
+
+@router.post("/chat/stream")
+async def chat_stream(
+    body: ChatRequest,
+    principal: CurrentPrincipal,
+    pool: PoolDep,
+    agent: AgentDep,
+    settings: SettingsDep,
+    mcp_failures: McpFailuresDep,
+) -> StreamingResponse:
+    """Même conversation que /chat, mais diffusée au fil de la génération.
+
+    Point de conception central : **tout ce qui peut échouer proprement doit
+    échouer avant que la diffusion ne commence.** Une fois le premier octet
+    envoyé, le code HTTP est figé : on ne peut plus répondre 400 ou 404. Le
+    préambule (`prepare_turn`) est donc exécuté hors du générateur, et seules
+    les erreurs survenant pendant la génération passent par un événement
+    `error`.
+    """
+    user_id = principal.subject
+    # Hors du générateur : ces erreurs sont encore de vrais codes HTTP.
+    conversation_id, message, redacted = await prepare_turn(body, user_id, pool)
+
+    initial_warnings = [*warnings_for(mcp_failures), *redaction_warnings(redacted)]
+
+    async def event_stream() -> AsyncIterator[str]:
+        # Premier événement : le client a besoin de l'identifiant de
+        # conversation pour enchaîner, et des avertissements déjà connus.
+        yield format_event(
+            "start",
+            {
+                "conversation_id": str(conversation_id),
+                "warnings": initial_warnings,
+            },
+        )
+
+        try:
+            # `asyncio.timeout` borne l'ensemble de la diffusion.
+            # `asyncio.wait_for` ne conviendrait pas : il attend un résultat,
+            # pas un générateur qui produit au fil de l'eau.
+            async with asyncio.timeout(settings.agent_timeout_seconds):
+                async for item in stream_financial_agent(
+                    agent, message, str(conversation_id), user_id
+                ):
+                    data = item.data
+                    if item.event == "done":
+                        data = {**data, "conversation_id": str(conversation_id)}
+                    yield format_event(item.event, data)
+
+        except TimeoutError:
+            logger.error("Timeout stream user=%s conv=%s", user_id, conversation_id)
+            yield format_event(
+                "error", {"detail": "L'agent a mis trop de temps à répondre."}
+            )
+            return
+        except asyncio.CancelledError:
+            # Le client s'est déconnecté. L'état déjà écrit par LangGraph
+            # reste cohérent ; on journalise et on laisse l'annulation
+            # remonter, sans quoi la tâche ne s'arrêterait pas.
+            logger.info("Client déconnecté user=%s conv=%s", user_id, conversation_id)
+            raise
+        except Exception:
+            # Le détail et la trace vont dans les logs, pas dans le flux.
+            logger.exception("Erreur stream user=%s conv=%s", user_id, conversation_id)
+            yield format_event(
+                "error",
+                {"detail": "Erreur lors de l'exécution de l'agent financier."},
+            )
+            return
+
+        # Après succès seulement, comme pour /chat.
+        await repo.touch_conversation(pool, conversation_id)
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers=SSE_HEADERS,
     )
