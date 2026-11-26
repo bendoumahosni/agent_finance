@@ -7,7 +7,8 @@ donnée mal formée est rejetée avec un 422 avant d'atteindre la logique.
 import uuid
 from datetime import datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, EmailStr, Field
+from datetime import datetime, time
 
 class MemoryOut(BaseModel):
     """Un souvenir de la mémoire longue."""
@@ -25,7 +26,21 @@ class ChatRequest(BaseModel):
         description="Omettre pour démarrer une nouvelle conversation.",
     )
 
+class EmailAddressIn(BaseModel):
+    """Adresse de destination.
 
+    `EmailStr` valide le format au bord : une adresse mal formée est rejetée
+    par un 422 avant d'atteindre la base ou le serveur SMTP.
+    """
+
+    address: EmailStr
+
+
+class EmailAddressOut(BaseModel):
+    id: uuid.UUID
+    address: str
+    verified_at: datetime | None = None
+    created_at: datetime
 
 
 class ConversationOut(BaseModel):
@@ -33,6 +48,30 @@ class ConversationOut(BaseModel):
     title: str | None
     created_at: datetime
     updated_at: datetime
+
+class ScheduleIn(BaseModel):
+    """Création d'une tâche quotidienne.
+
+    `run_at_time` est une heure locale et `timezone` son fuseau : stocker une
+    heure sans fuseau décalerait l'exécution d'une heure deux fois par an.
+    """
+
+    prompt: str = Field(..., min_length=1, max_length=2000)
+    email_id: uuid.UUID
+    run_at_time: time
+    timezone: str = Field("Europe/Paris", max_length=64)
+
+
+class ScheduleOut(BaseModel):
+    id: uuid.UUID
+    prompt: str
+    run_at_time: time
+    timezone: str
+    enabled: bool
+    next_run_at: datetime
+    last_run_at: datetime | None = None
+    last_error: str | None = None
+    created_at: datetime
 
 
 class HealthResponse(BaseModel):

@@ -3,7 +3,7 @@
 #   pip install -e ".[dev]"  (développement)
 fastapi
 uvicorn[standard]
-pydantic
+pydantic[email]
 pydantic-settings
 httpx
 langchain-mcp-adapters
@@ -15,3 +15,4 @@ psycopg[binary,pool]
 pyjwt[crypto]
 alembic
 langfuse
+aiosmtplib

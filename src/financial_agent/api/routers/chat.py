@@ -8,6 +8,8 @@ from collections.abc import AsyncIterator
 from fastapi import APIRouter, HTTPException, status
 from fastapi.responses import StreamingResponse
 from langchain.agents.middleware import PIIDetectionError
+from fastapi import APIRouter, Depends, HTTPException, status
+from financial_agent.api.rate_limit import enforce_rate_limit
 
 from financial_agent.agent.guardrails import (
     PaymentDataRejected,
@@ -30,7 +32,11 @@ from financial_agent.db.repositories import conversations as repo
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["chat"])
+# Posée sur le routeur et non sur chaque endpoint : /chat et /chat/stream
+# partagent ainsi le même compteur, et un futur endpoint de conversation
+# sera couvert sans qu'on y pense. Sinon il suffirait de changer d'endpoint
+# pour doubler son quota.
+router = APIRouter(tags=["chat"], dependencies=[Depends(enforce_rate_limit)])
 
 TITLE_MAX_LENGTH = 60
 

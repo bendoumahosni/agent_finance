@@ -2,6 +2,14 @@
 # Lancer depuis ce dossier :  docker compose up -d --build
 
 services:
+
+  mailpit:
+    # Faux serveur SMTP avec une interface web : rien ne part réellement.
+    image: axllent/mailpit
+    ports:
+      - "8025:8025"   # interface web
+
+
   db:
     image: postgres:16
     environment:
@@ -19,6 +27,18 @@ services:
     ports:
       # Limité à 127.0.0.1 : la base n'est pas exposée sur le réseau.
       - "127.0.0.1:5432:5432"
+  migrate:
+    # Service éphémère : il applique les migrations puis s'arrête.
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    command: alembic upgrade head
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
 
   keycloak:
     # start-dev : HTTP et base embarquée. Développement uniquement.
@@ -50,8 +70,9 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      # Pas de condition sur currency-mcp : l'API doit pouvoir démarrer
-      # sans lui, c'est tout l'intérêt du démarrage dégradé.
+      migrate:
+        # L'API ne démarre pas avant que les migrations aient réussi.
+        condition: service_completed_successfully
       currency-mcp:
         condition: service_started
     ports:

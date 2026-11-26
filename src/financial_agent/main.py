@@ -16,11 +16,20 @@ from langgraph.store.postgres.aio import AsyncPostgresStore
 from financial_agent import __version__
 from financial_agent.agent.factory import build_agent
 from financial_agent.agent.mcp_tools import load_mcp_tools
-from financial_agent.api.routers import chat, conversations, health, memories
+from financial_agent.api.routers import (
+    chat,
+    conversations,
+    emails,
+    health,
+    memories,
+    schedules,
+)
 from financial_agent.config import Settings, get_settings
 from financial_agent.db.pool import create_pool
 from financial_agent.logging_setup import setup_logging
 from financial_agent.observability.tracing import init_tracing, shutdown_tracing
+from financial_agent.worker.loops import outbox_loop, scheduler_loop
+
 logger = logging.getLogger(__name__)
 
 
@@ -85,6 +94,7 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     setup_logging(settings.log_level)
     init_tracing(settings)
+
     # --- DÉMARRAGE ---
     async with create_pool(settings) as pool:
         checkpointer = AsyncPostgresSaver(pool)
@@ -109,11 +119,13 @@ async def lifespan(app: FastAPI):
             checkpointer, settings, extra_tools=mcp_tools, store=store
         )
 
-        retry_task: asyncio.Task | None = None
+        # Tâches de fond. On garde les références : sans elles, le
+        # ramasse-miettes peut supprimer une tâche en cours.
+        background: list[asyncio.Task] = []
         if settings.mcp_servers:
-            # create_task : on garde la référence, sinon le ramasse-miettes
-            # peut supprimer la tâche.
-            retry_task = asyncio.create_task(mcp_retry_loop(app, settings))
+            background.append(asyncio.create_task(mcp_retry_loop(app, settings)))
+        background.append(asyncio.create_task(outbox_loop(app, settings)))
+        background.append(asyncio.create_task(scheduler_loop(app, settings)))
 
         logger.info(
             "Agent prêt (%d outil(s) MCP, %d serveur(s) en échec), pool ouvert.",
@@ -125,14 +137,15 @@ async def lifespan(app: FastAPI):
             yield
         finally:
             # --- ARRÊT ---
-            if retry_task is not None:
-                retry_task.cancel()
+            for task in background:
+                task.cancel()
+            for task in background:
                 with suppress(asyncio.CancelledError):
-                    await retry_task
-            # le "async with" ferme le pool
+                    await task
             # Vider la file de traces avant de fermer : sinon les dernières
             # secondes d'activité sont perdues à chaque redéploiement.
             shutdown_tracing()
+        # le "async with" ferme le pool
 
     logger.info("Pool Postgres fermé.")
 
@@ -149,6 +162,11 @@ def create_app(lifespan_handler=lifespan) -> FastAPI:
     app.include_router(chat.router)
     app.include_router(conversations.router)
     app.include_router(memories.router)
+    app.include_router(emails.router)
+    # Routeur public : le lien de confirmation est ouvert depuis une boîte
+    # mail, sans jeton JWT.
+    app.include_router(emails.public_router)
+    app.include_router(schedules.router)
 
     return app
 

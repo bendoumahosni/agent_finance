@@ -23,6 +23,38 @@ class Settings(BaseSettings):
     openai_api_key: str
     tavily_api_key: str
     database_url: str
+    # --- Envoi d'e-mails (SMTP) ---
+    # Sans host ni expéditeur, l'envoi est désactivé et les endpoints
+    # concernés répondent 503 au lieu d'échouer obscurément.
+    smtp_host: str | None = None
+    smtp_port: int = 587
+    smtp_user: str | None = None
+    smtp_password: str | None = None
+    smtp_from: str | None = None
+    smtp_starttls: bool = True
+    smtp_timeout_seconds: int = 15
+    # URL publique de l'API, pour construire le lien de confirmation.
+    public_base_url: str = "http://localhost:8000"
+    email_token_ttl_seconds: int = 86400
+    max_email_addresses_per_user: int = 5
+
+    # --- File de sortie et planificateur ---
+    outbox_poll_seconds: int = 10
+    outbox_batch_size: int = 20
+    outbox_max_attempts: int = 5
+    # Attente de base, doublée à chaque essai (10s, 20s, 40s, 80s...).
+    outbox_backoff_seconds: int = 10
+    scheduler_poll_seconds: int = 30
+    scheduler_batch_size: int = 10
+    # Chaque tâche quotidienne consomme des appels de modèle sans que
+    # personne ne regarde : on borne leur nombre.
+    max_scheduled_tasks_per_user: int = 5
+
+
+    # --- Limitation de débit ---
+    # Par utilisateur authentifié. 0 ou moins désactive la limitation.
+    rate_limit_requests: int = 20
+    rate_limit_window_seconds: int = 60
 
     # --- Fournisseur d'identité (OIDC / Keycloak) ---
     oidc_issuer: str
