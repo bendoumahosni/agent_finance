@@ -219,7 +219,8 @@ class ToolResultGuardMiddleware(AgentMiddleware):
         if not isinstance(result, ToolMessage):
             return result
 
-        text = result.content if isinstance(result.content, str) else str(result.content)
+        content = result.content
+        text = content if isinstance(content, str) else str(content)
         tool_name = request.tool_call.get("name", "inconnu")
         previous: list[str] = list(request.state.get("guardrail_warnings", []))
 
