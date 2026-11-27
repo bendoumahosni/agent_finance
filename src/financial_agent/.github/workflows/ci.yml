@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+
+    # Les tests d'intégration ont besoin d'une vraie base : les identifiants
+    # correspondent à ceux que tests/conftest.py pose par défaut.
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://test:test@localhost:5432/test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Installer le paquet et les outils
+        run: pip install -e ".[dev]"
+
+      # Les trois portes, de la plus rapide à la plus lente : un échec de
+      # formatage ne doit pas attendre la fin des tests pour être signalé.
+      - name: Lint
+        run: ruff check src tests
+
+      - name: Typage
+        run: mypy src
+
+      - name: Migrations
+        run: alembic upgrade head
+
+      - name: Tests
+        run: pytest -q
