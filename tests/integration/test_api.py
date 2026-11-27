@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from financial_agent.api.dependencies import get_agent, get_checkpointer, get_pool
+from financial_agent.api.rate_limit import enforce_rate_limit
 from financial_agent.auth.principal import Principal
 from financial_agent.auth.verify import get_principal
 from financial_agent.main import create_app
@@ -101,14 +102,17 @@ def checkpointer() -> FakeCheckpointer:
 
 
 @pytest.fixture
-def app(checkpointer):
+def app(checkpointer, mcp_failures, store):
     application = create_app(lifespan_handler=None)
     application.dependency_overrides[get_pool] = lambda: FakePool()
     application.dependency_overrides[get_agent] = lambda: FakeAgent()
     application.dependency_overrides[get_checkpointer] = lambda: checkpointer
+    application.dependency_overrides[get_mcp_failures] = lambda: mcp_failures
+    application.dependency_overrides[get_store] = lambda: store
+    # La limitation de débit est posée sur le routeur : sans cette
+    # neutralisation, chaque test de /chat irait interroger la vraie base.
+    application.dependency_overrides[enforce_rate_limit] = lambda: None
     return application
-
-
 @pytest.fixture
 def client(app) -> TestClient:
     """Client authentifié : la dépendance d'authentification est remplacée."""
