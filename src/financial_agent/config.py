@@ -18,7 +18,13 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8",
         extra="ignore",
     )
-
+    # --- CORS ---
+    # Origines autorisées à appeler l'API depuis un navigateur.
+    # En production, Caddy sert le frontend et l'API sur la MÊME origine :
+    # le navigateur ne fait aucun contrôle CORS, cette liste reste vide.
+    # Elle ne sert qu'au serveur de développement du frontend (Vite).
+    #   CORS_ORIGINS=["http://localhost:5173"]
+    cors_origins: list[str] = []
     # --- Secrets et accès externes (obligatoires) ---
     openai_api_key: str
     tavily_api_key: str

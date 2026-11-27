@@ -10,6 +10,7 @@ import logging
 from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.store.postgres.aio import AsyncPostgresStore
 
@@ -151,12 +152,29 @@ async def lifespan(app: FastAPI):
 
 
 def create_app(lifespan_handler=lifespan) -> FastAPI:
+    settings = get_settings()
+
     app = FastAPI(
         title="Financial Agent API",
         description="API de conversation avec un agent financier",
         version=__version__,
         lifespan=lifespan_handler,
     )
+
+    # Monté seulement si des origines sont déclarées : en production la
+    # liste est vide, donc aucun en-tête CORS n'est émis. Jamais "*" —
+    # une liste explicite, sinon n'importe quel site peut appeler l'API
+    # avec le jeton de votre utilisateur.
+    if settings.cors_origins:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=settings.cors_origins,
+            # L'authentification passe par un en-tête Bearer, pas par un
+            # cookie : inutile d'autoriser les credentials.
+            allow_credentials=False,
+            allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+            allow_headers=["Authorization", "Content-Type"],
+        )
 
     app.include_router(health.router)
     app.include_router(chat.router)
