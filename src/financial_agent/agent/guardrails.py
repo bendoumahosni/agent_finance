@@ -26,9 +26,9 @@ import re
 from typing import Any
 
 from langchain.agents.middleware import AgentMiddleware, AgentState, ToolCallRequest
+from langchain.agents.middleware.pii import detect_credit_card, detect_email
 from langchain_core.messages import ToolMessage
 from langgraph.types import Command
-from langchain.agents.middleware.pii import detect_credit_card, detect_email
 
 logger = logging.getLogger(__name__)
 

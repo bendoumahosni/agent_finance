@@ -16,18 +16,19 @@ from langchain.agents.middleware import (
 )
 from langchain_core.tools import BaseTool
 from langchain_openai import ChatOpenAI
+from langgraph.store.base import BaseStore
 
 from financial_agent.agent.guardrails import ToolResultGuardMiddleware
-from financial_agent.agent.prompts import SYSTEM_PROMPT
-from financial_agent.agent.tools.calcul import calcul_tool
-from financial_agent.agent.tools.search import build_search_tool
-from financial_agent.config import Settings
 from financial_agent.agent.memory import (
     MemoryInjectionMiddleware,
     forget_memory,
     save_memory,
 )
-from langgraph.store.base import BaseStore
+from financial_agent.agent.prompts import SYSTEM_PROMPT
+from financial_agent.agent.tools.calcul import calcul_tool
+from financial_agent.agent.tools.search import build_search_tool
+from financial_agent.config import Settings
+
 
 def build_llm(settings: Settings) -> ChatOpenAI:
     kwargs: dict = {

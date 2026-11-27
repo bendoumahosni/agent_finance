@@ -5,11 +5,9 @@ import logging
 import uuid
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from langchain.agents.middleware import PIIDetectionError
-from fastapi import APIRouter, Depends, HTTPException, status
-from financial_agent.api.rate_limit import enforce_rate_limit
 
 from financial_agent.agent.guardrails import (
     PaymentDataRejected,
@@ -25,6 +23,7 @@ from financial_agent.api.dependencies import (
     PoolDep,
     SettingsDep,
 )
+from financial_agent.api.rate_limit import enforce_rate_limit
 from financial_agent.api.schemas import ChatRequest, ChatResponse
 from financial_agent.api.sse import SSE_HEADERS, format_event
 from financial_agent.auth.verify import CurrentPrincipal

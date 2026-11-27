@@ -5,9 +5,9 @@ séparé la logique pure (`compute`, `build_result`) des entrées/sorties.
 """
 
 import pytest
+from financial_agent.agent.tools.currency import build_result
 
 from financial_agent.agent.tools.calcul import compute
-from financial_agent.agent.tools.currency import build_result
 
 
 @pytest.mark.parametrize(

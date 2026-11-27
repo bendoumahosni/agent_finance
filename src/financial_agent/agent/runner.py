@@ -1,12 +1,14 @@
 """Exécution de l'agent et lecture de son état."""
 
 import logging
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from typing import Any
 
 from langchain_core.messages import HumanMessage
+
 from financial_agent.observability.tracing import trace_config
-from collections.abc import AsyncIterator
+
 logger = logging.getLogger(__name__)
 
 

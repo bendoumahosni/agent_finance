@@ -16,6 +16,7 @@ from financial_agent.api.dependencies import AgentDep, CheckpointerDep, PoolDep
 from financial_agent.api.schemas import ConversationOut, MessageOut
 from financial_agent.auth.verify import CurrentPrincipal
 from financial_agent.db.repositories import conversations as repo
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])

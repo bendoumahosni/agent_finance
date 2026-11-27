@@ -5,10 +5,10 @@ donnée mal formée est rejetée avec un 422 avant d'atteindre la logique.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, time
 
 from pydantic import BaseModel, EmailStr, Field
-from datetime import datetime, time
+
 
 class MemoryOut(BaseModel):
     """Un souvenir de la mémoire longue."""

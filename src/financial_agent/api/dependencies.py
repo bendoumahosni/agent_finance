@@ -12,10 +12,11 @@ from typing import Annotated, Any
 
 from fastapi import Depends, Request
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.store.base import BaseStore
 
 from financial_agent.config import Settings, get_settings
 from financial_agent.db.pool import DictPool
-from langgraph.store.base import BaseStore
+
 
 def get_store(request: Request) -> BaseStore:
     """Store de la mémoire longue."""
