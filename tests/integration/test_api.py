@@ -11,7 +11,13 @@ import uuid
 import pytest
 from fastapi.testclient import TestClient
 
-from financial_agent.api.dependencies import get_agent, get_checkpointer, get_pool
+from financial_agent.api.dependencies import (
+    get_agent,
+    get_checkpointer,
+    get_mcp_failures,
+    get_pool,
+    get_store,
+)
 from financial_agent.api.rate_limit import enforce_rate_limit
 from financial_agent.auth.principal import Principal
 from financial_agent.auth.verify import get_principal
